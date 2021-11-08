@@ -2,6 +2,34 @@ import folium
 import xml.dom.minidom as minidom
 import branca
 from datetime import datetime, timedelta
+from branca.element import MacroElement
+from jinja2 import Template
+
+class BindColormap(MacroElement):
+    """Binds a colormap to a given layer.
+
+    Parameters
+    ----------
+    colormap : branca.colormap.ColorMap
+        The colormap to bind.
+    """
+    def __init__(self, layer, colormap):
+        super(BindColormap, self).__init__()
+        self.layer = layer
+        self.colormap = colormap
+        self._template = Template(u"""
+        {% macro script(this, kwargs) %}
+            {{this.colormap.get_name()}}.svg[0][0].style.display = 'block';
+            {{this._parent.get_name()}}.on('overlayadd', function (eventLayer) {
+                if (eventLayer.layer == {{this.layer.get_name()}}) {
+                    {{this.colormap.get_name()}}.svg[0][0].style.display = 'block';
+                }});
+            {{this._parent.get_name()}}.on('overlayremove', function (eventLayer) {
+                if (eventLayer.layer == {{this.layer.get_name()}}) {
+                    {{this.colormap.get_name()}}.svg[0][0].style.display = 'none';
+                }});
+        {% endmacro %}
+        """)  # noqa
 
 #####################
 # parse geiger data #
@@ -109,7 +137,7 @@ colormap = branca.colormap.linear.YlOrRd_09.scale(0, 50*geiger_k)
 colormap = colormap.to_step(index=[0, 10*geiger_k, 20*geiger_k, 30*geiger_k, 40*geiger_k, 50*geiger_k, 0.57])
 colormap.caption = 'μSv/h (maximum safe dose 0.57 μSv/h)'
 print(colormap.colors)
-colormap.add_to(map)
+# colormap.add_to(map)
 colors_rgb = colormap.colors
 for color in colors_rgb:
     color_hex = ('{:X}{:X}{:X}').format(int(color[0]*255), int(color[1]*255), int(color[2]*255))
@@ -135,14 +163,14 @@ for point in data_points:
                         color=color, 
                         fill_color=color, 
                         fill_opacity=0.9))
-map.add_child(geiger_group)
+# map.add_child(geiger_group)
 
 ### temperature, humidity, pressure, SDS ###
 
-temp_group = folium.FeatureGroup(name='Temperature', show=False)
-hum_group = folium.FeatureGroup(name='Humidity', show=False)
-pr_group = folium.FeatureGroup(name='Pressure', show=False)
-pm_group = folium.FeatureGroup(name='PM', show=False)
+temp_group = folium.FeatureGroup(name='Temperature')
+hum_group = folium.FeatureGroup(name='Humidity')
+pr_group = folium.FeatureGroup(name='Pressure')
+pm_group = folium.FeatureGroup(name='PM')
 
 ### temperature color
 
@@ -245,12 +273,19 @@ temp_colormap.add_to(map)
 hum_colormap.add_to(map)
 pr_colormap.add_to(map)
 pm_colormap.add_to(map)
+colormap.add_to(map)
 
 map.add_child(geiger_group)
 map.add_child(temp_group)
 map.add_child(hum_group)
 map.add_child(pr_group)
 map.add_child(pm_group)
-map.add_child(folium.LayerControl())
+
+map.add_child(folium.map.LayerControl())
+map.add_child(BindColormap(temp_group, temp_colormap)).add_child(BindColormap(hum_group, hum_colormap))
+map.add_child(BindColormap(pr_group, pr_colormap)).add_child(BindColormap(pm_group, pm_colormap))
+map.add_child(BindColormap(geiger_group, colormap))
+
+# map.add_child(folium.LayerControl())
 
 map.save("docs/map.html")
